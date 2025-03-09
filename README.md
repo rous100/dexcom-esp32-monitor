@@ -3,6 +3,7 @@
 This is a simple monitor to display the current glucose level and trend through an ESP32 and a 2.8" TFT LCD display.
 
 ## Features
+![IMG_8577](https://github.com/user-attachments/assets/b6ac8dad-ef86-4e08-9859-ca909362449d)
 
 -   Display the current glucose level in mg/dL and mmol/L
 -   Display the change from the previous reading
