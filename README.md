@@ -14,13 +14,27 @@ This is a simple monitor to display the current glucose level and trend through 
 
 -   ESP32
 -   2.8" TFT LCD display
--   Jumper wires
+-   Jumper wires (if the microcontroller and display are separated, recommended to have it as one unit).
 -   Have an account on Dexcom Share
 
 ## Configuration
 
 -   Dexcom Share Username and Password
 -   WiFi SSID and Password
+
+-   Cable Connection (if the units are separated)
+  
+| ILI9341 Pin  | ESP32 Pin                    | Function                  |
+|-------------|----------------------------|---------------------------|
+| VCC         | 3.3V                       | Power                     |
+| GND         | GND                         | Ground                    |
+| SCK         | GPIO 23                     | SPI Clock (SCK)           |
+| SDI (MOSI)  | GPIO 18                     | SPI Data Out (MOSI)       |
+| CS          | GPIO 5                      | Chip Select (CS)          |
+| D/C         | GPIO 2                      | Data/Command (D/C)        |
+| RESET       | GPIO 4                      | Reset (RST)               |
+| LED         | 3.3V (or 5V)                 | Backlight (optional)      |
+
 
 ## Setup
 
