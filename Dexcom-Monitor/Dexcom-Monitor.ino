@@ -5,6 +5,9 @@
 #include <ArduinoJson.h>
 #include <Adafruit_GFX.h>
 // #include <Adafruit_ILI9341.h>
+// Install the "XPT2046_Touchscreen" library by Paul Stoffregen to use the Touchscreen - https://github.com/PaulStoffregen/XPT2046_Touchscreen
+// Note: this library doesn't require further configuration
+#include <XPT2046_Touchscreen.h>
 #include <time.h>
 #include "mycreds.h"
 
@@ -17,10 +20,22 @@
 // #define TFT_DC 2  // Data/Command
 // #define TFT_RST 4 // Reset
 
+#define BACKLIGHT_PIN 21
+
 // Initialize Display
 TFT_eSPI tft = TFT_eSPI();
 // Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_RST);
 // Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
+
+// Touchscreen pins
+#define XPT2046_IRQ 36   // T_IRQ
+#define XPT2046_MOSI 32  // T_DIN
+#define XPT2046_MISO 39  // T_OUT
+#define XPT2046_CLK 25   // T_CLK
+#define XPT2046_CS 33    // T_CS
+
+SPIClass touchscreenSPI = SPIClass(VSPI);
+XPT2046_Touchscreen touchscreen(XPT2046_CS, XPT2046_IRQ);
 
 
 const char *dexcomAuthenticateURL = "https://share2.dexcom.com/ShareWebServices/Services/General/AuthenticatePublisherAccount";
@@ -44,6 +59,7 @@ String lastRawTime = "N/A";
 
 bool refreshSynced = false;
 int fetchDelay = 15000;
+int brightness = 128;
 
 
 // Trend direction mapping
@@ -81,6 +97,7 @@ void setup()
     Serial.begin(115200);
 
 
+
     WiFi.begin(ssid, password);
     while (WiFi.status() != WL_CONNECTED)
     {
@@ -89,9 +106,14 @@ void setup()
     }
     Serial.println("Connected to WiFi");
 
+
+    touchscreenSPI.begin(XPT2046_CLK, XPT2046_MISO, XPT2046_MOSI, XPT2046_CS);
+    touchscreen.begin(touchscreenSPI);
+
     // Initialize Display
     // SPI.begin(23, 19, 18, 5);
     tft.init();
+    setBrightNess();
     tft.setRotation(3);
     tft.fillScreen(TFT_BLACK);
     tft.setTextColor(TFT_WHITE);
@@ -116,11 +138,18 @@ void setup()
     fetchGlucoseData();
 }
 
+void setBrightNess()
+{
+    pinMode(BACKLIGHT_PIN, OUTPUT);
+    analogWrite(BACKLIGHT_PIN, brightness); 
+}
+
 void loop()
 {
     static unsigned long lastFetchTime = 0;
     static unsigned long lastWiFiCheckTime = 0;
     static unsigned long lastSyncTime = 0;
+    static unsigned long lastTouchTime = 0;
     unsigned long currentMillis = millis();
 
     if (currentMillis - lastWiFiCheckTime >= 300000)
@@ -153,6 +182,18 @@ void loop()
         }
 
         lastFetchTime = currentMillis;
+    }
+
+    if (currentMillis - lastTouchTime > 300 && touchscreen.tirqTouched() && touchscreen.touched()) 
+    {
+        lastTouchTime = currentMillis;
+        brightness -= 32;
+        if (brightness <= 0) 
+        {
+            brightness = 255;
+        }
+
+        setBrightNess();
     }
 }
 
