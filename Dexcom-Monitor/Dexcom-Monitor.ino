@@ -8,7 +8,6 @@
 #include <time.h>
 #include "mycreds.h"
 
-
 // #include <Fonts/FreeSansBold12pt7b.h>  // Medium size for labels
 // #include <Fonts/FreeSansBold24pt7b.h>  // For the glucose difference
 // #include <Fonts/FreeSansBold42pt7b.h>  // Largest available for main reading
@@ -441,11 +440,11 @@ void updateDisplay()
 
     if (current_glucose_mgdl > 180)
     {
-        colorBasedOnGlucose = TFT_RED;
+        colorBasedOnGlucose = TFT_YELLOW;
     }
-    else if (current_glucose_mgdl < 70)
+    else if (current_glucose_mgdl < 80)
     {
-        colorBasedOnGlucose = TFT_BLUE;
+        colorBasedOnGlucose = TFT_RED;
     }
     else
     {
@@ -458,64 +457,33 @@ void updateDisplay()
     // tft.setCursor(40, 70);
     // tft.printf("%.0f", current_glucose_mgdl);
 
-
- // Set text datum to middle center
+    // Set text datum to middle center
     tft.setTextDatum(MC_DATUM);
-    
-    // The main glucose reading - use the largest font
-    tft.setFreeFont(&FreeSansBold24pt7b); // Use the largest font
+
+    // Load the largest font (Font64rle)
+    // tft.loadFont("Font64rle");
+    tft.setTextFont(7);
+    tft.setTextSize(3);
+
     tft.setTextColor(colorBasedOnGlucose, TFT_BLACK);
 
-    // Create a sprite
-    // TFT_eSprite spr = TFT_eSprite(&tft);
-    // spr.createSprite(120, 60); // Create appropriate size
-    // spr.setFreeFont(&FreeSansBold24pt7b);
-    // spr.setTextColor(colorBasedOnGlucose);
-    // spr.drawString("123", 0, 0); // Draw text in sprite
-    // // Now push to screen with 2x scaling
-    // spr.pushSprite(50, 50, 2); // Last parameter is scale factor
-    // spr.deleteSprite(); 
-
-
-    
-    // Position at center of screen (adjust Y position to make room for other elements)
+    // Calculate center position
     int centerX = tft.width() / 2;
-    int centerY = tft.height() / 2 - 20; // Slightly below center
-    
-    // Draw the glucose value at the calculated position
+    int centerY = tft.height() / 2 - 40; // Slightly below center
+
+    // Draw glucose value centered
     tft.drawNumber(round(current_glucose_mgdl), centerX, centerY);
 
-    tft.setTextFont(1); 
+    // Unload font to free memory
+    // tft.unloadFont();
 
-      // Main Glucose Value - using the largest practical size
-    // tft.setTextSize(8); // Try this large size
-    
-    // // Calculate position to center the text
-    // // For a 3-digit number with size 8
-    // int textWidth = 8 * 6 * 3; // Approximate width (size * char_width * num_chars)
-    // int xPos = (tft.width() - textWidth) / 2;
-    
-    // tft.setCursor(xPos, 80);
-    // tft.printf("%.0f", current_glucose_mgdl);
-
-
-
-
-    // tft.setTextSize(2);
-    // tft.setCursor(160, 60);
-    // tft.print("mg/dL");
-
-    // Glucose mmol/L
-    // tft.setTextSize(3);
-    // tft.setCursor(40, 100);
-    // tft.printf("%.1f", glucose_mmol);
-    // tft.setTextSize(2);
-    // tft.setCursor(160, 110);
-    // tft.print("mmol/L");
+    // tft.setTextFont();
+      tft.setTextFont(1);
+      tft.setTextSize(4);
 
     // Glucose Change Indicator
-    tft.setTextSize(4);
-    tft.setCursor(120, 20);
+    // tft.setTextSize(4);
+    tft.setCursor(120, 160);
     if (glucose_diff > 0)
     {
         tft.printf("+%.0f", glucose_diff);
@@ -529,6 +497,7 @@ void updateDisplay()
         tft.setTextColor(TFT_WHITE);
         tft.print("+0");
     }
+
 
     // **Trend Arrow & Text**
     tft.setTextSize(4);
@@ -551,37 +520,39 @@ void updateDisplay()
         if (trendIndex == 3)
         { // FortyFiveUp
             trend = "Increasing";
-            drawDiagonalUpArrow(40, 180, 20, colorBasedOnGlucose);
+            drawDiagonalUpArrow(180, 170, 20, colorBasedOnGlucose);
         }
         else if (trendIndex == 5)
         { // FortyFiveDown
             trend = "Decreasing";
-            drawDiagonalDownArrow(40, 170, 20, colorBasedOnGlucose);
+            drawDiagonalDownArrow(180, 160, 20, colorBasedOnGlucose);
         }
         else
         {
             // For all other trends, use the character arrows
-            tft.setCursor(40, 170);
+            tft.setCursor(180, 160);
             tft.print(DEXCOM_TREND_ARROWS[trendIndex]);
         }
     }
     else
     {
         // Unknown trend
-        tft.setCursor(40, 170);
+        tft.setCursor(180, 160);
         tft.print("?");
     }
 
     // Trend Text
-    tft.setTextSize(2);
-    tft.setCursor(100, 180);
-    tft.print(trend);
+    // tft.setTextSize(2);
+    // tft.setCursor(100, 180);
+    // tft.print(trend);
 
     // Timestamp
-
-    if (timestamp.endsWith("(OLD)")){
+    if (timestamp.endsWith("(OLD)"))
+    {
         tft.setTextColor(TFT_RED);
-    } else {
+    }
+    else
+    {
         tft.setTextColor(TFT_WHITE);
     }
 
