@@ -471,6 +471,11 @@ void updateDisplay()
     int centerX = tft.width() / 2;
     int centerY = tft.height() / 2 - 40; // Slightly below center
 
+    if (current_glucose_mgdl >= 100)
+    {
+      centerX -= 30;
+    }
+
     // Draw glucose value centered
     tft.drawNumber(round(current_glucose_mgdl), centerX, centerY);
 
@@ -520,7 +525,7 @@ void updateDisplay()
         if (trendIndex == 3)
         { // FortyFiveUp
             trend = "Increasing";
-            drawDiagonalUpArrow(180, 170, 20, colorBasedOnGlucose);
+            drawDiagonalUpArrow(180, 185, 20, colorBasedOnGlucose);
         }
         else if (trendIndex == 5)
         { // FortyFiveDown
@@ -557,7 +562,7 @@ void updateDisplay()
     }
 
     tft.setTextSize(2);
-    tft.setCursor(40, 210);
+    tft.setCursor(30, 210);
     tft.print("Updated: ");
     tft.print(timestamp);
 }
