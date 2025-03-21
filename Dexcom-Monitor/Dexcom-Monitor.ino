@@ -42,6 +42,10 @@ String timestamp = "N/A";
 
 String lastRawTime = "N/A";
 
+bool refreshSynced = false;
+int fetchDelay = 15000;
+
+
 // Trend direction mapping
 const char *DEXCOM_TREND_DIRECTIONS[] = {
     "None",          // 0 - Unconfirmed
@@ -70,7 +74,7 @@ const char *DEXCOM_TREND_ARROWS[] = {
     "-"         // 9 - RateOutOfRange
 };
 
-void fetchGlucoseData(bool notifyOld = false);
+bool fetchGlucoseData(bool notifyOld = false);
 
 void setup()
 {
@@ -116,6 +120,7 @@ void loop()
 {
     static unsigned long lastFetchTime = 0;
     static unsigned long lastWiFiCheckTime = 0;
+    static unsigned long lastSyncTime = 0;
     unsigned long currentMillis = millis();
 
     if (currentMillis - lastWiFiCheckTime >= 300000)
@@ -124,9 +129,29 @@ void loop()
         lastWiFiCheckTime = currentMillis;
     }
 
-    if (currentMillis - lastFetchTime >= 300000)
-    { // Fetch glucose data every 5 minutes
-        fetchGlucoseData(true);
+    if (refreshSynced && currentMillis - lastSyncTime >= 3600000) // redo sync every hour
+    {
+        refreshSynced = false;
+    }
+
+    if (currentMillis - lastFetchTime >= fetchDelay)
+    {
+        if (fetchGlucoseData(refreshSynced))
+        {
+            if (!refreshSynced)
+            {
+              refreshSynced = true;
+              fetchDelay = 300000;
+              lastSyncTime = currentMillis;
+              Serial.println("Refresh synced");
+            }          
+        } else if (refreshSynced)
+        {
+              refreshSynced = false;
+              fetchDelay = 15000;
+              Serial.println("Refresh desynced");          
+        }
+
         lastFetchTime = currentMillis;
     }
 }
@@ -193,8 +218,10 @@ bool loginToDexcom()
     return false;
 }
 
-void fetchGlucoseData(bool notifyOld)
+bool fetchGlucoseData(bool notifyOld)
 {
+    bool ret = false;
+
     if (WiFi.status() == WL_CONNECTED && sessionId != "")
     {
         HTTPClient http;
@@ -226,7 +253,7 @@ void fetchGlucoseData(bool notifyOld)
                 {
                     Serial.println("Re-login failed!");
                 }
-                return; // Stop execution here
+                return ret; // Stop execution here
             }
 
             // Parse JSON
@@ -245,9 +272,21 @@ void fetchGlucoseData(bool notifyOld)
                 String rawTime = doc[0]["DT"]; // Example: "Date(1741497044189-0500)"
                 timestamp = formatTimestamp(rawTime);
 
-                if (notifyOld && rawTime == lastRawTime) {
-                    timestamp += " (OLD)";
+                if (notifyOld)
+                {
+                    if (rawTime == lastRawTime)
+                    {
+                        timestamp += " (OLD)";
+                    }
                 }
+
+                if (lastRawTime != "N/A" && lastRawTime != rawTime)
+                {
+                    ret = true;
+                }
+
+
+                
 
                 // Calculate difference
                 glucose_diff = current_glucose_mgdl - previous_glucose_mgdl;
@@ -255,7 +294,12 @@ void fetchGlucoseData(bool notifyOld)
                 Serial.printf("Glucose: %.0f mg/dL | Trend: %s | Change: %+0.1f | Time: %s\n",
                               current_glucose_mgdl, trend.c_str(), glucose_diff, timestamp.c_str());
 
-                updateDisplay(); // Update LCD
+                if (refreshSynced || lastRawTime != rawTime)
+                {
+                  updateDisplay(); // Update LCD
+                }
+
+                lastRawTime = rawTime;
             }
             else
             {
@@ -273,6 +317,8 @@ void fetchGlucoseData(bool notifyOld)
     {
         Serial.println("WiFi not connected or invalid session ID.");
     }
+
+    return ret;
 }
 
 bool checkDiff(DynamicJsonDocument &doc)
@@ -525,24 +571,24 @@ void updateDisplay()
         if (trendIndex == 3)
         { // FortyFiveUp
             trend = "Increasing";
-            drawDiagonalUpArrow(180, 185, 20, colorBasedOnGlucose);
+            drawDiagonalUpArrow(190, 185, 20, colorBasedOnGlucose);
         }
         else if (trendIndex == 5)
         { // FortyFiveDown
             trend = "Decreasing";
-            drawDiagonalDownArrow(180, 160, 20, colorBasedOnGlucose);
+            drawDiagonalDownArrow(190, 160, 20, colorBasedOnGlucose);
         }
         else
         {
             // For all other trends, use the character arrows
-            tft.setCursor(180, 160);
+            tft.setCursor(190, 160);
             tft.print(DEXCOM_TREND_ARROWS[trendIndex]);
         }
     }
     else
     {
         // Unknown trend
-        tft.setCursor(180, 160);
+        tft.setCursor(190, 160);
         tft.print("?");
     }
 
