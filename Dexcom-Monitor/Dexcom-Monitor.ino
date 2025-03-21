@@ -10,6 +10,7 @@
 #include <XPT2046_Touchscreen.h>
 #include <time.h>
 #include "mycreds.h"
+#include "unicorn.h"
 
 // #include <Fonts/FreeSansBold12pt7b.h>  // Medium size for labels
 // #include <Fonts/FreeSansBold24pt7b.h>  // For the glucose difference
@@ -652,6 +653,13 @@ void updateDisplay()
     tft.setCursor(30, 210);
     tft.print("Updated: ");
     tft.print(timestamp);
+
+    if (round(current_glucose_mgdl) == 100)
+    {
+      tft.pushImage(20, 155, UNICORN_SIZE, UNICORN_SIZE, epd_bitmap_unicorn_small);
+      tft.pushImage(268, 155, UNICORN_SIZE, UNICORN_SIZE, epd_bitmap_unicorn_small);
+    }
+   
 }
 
 void displayWiFiStatus(bool status)
