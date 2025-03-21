@@ -1,28 +1,32 @@
 #include <SPI.h>
+#include <TFT_eSPI.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <Adafruit_GFX.h>
-#include <Adafruit_ILI9341.h>
+// #include <Adafruit_ILI9341.h>
 #include <time.h>
+#include "mycreds.h"
 
-const char *ssid = "xxxx";     // Replace with your Wi-Fi SSID
-const char *password = "xxxx"; // Replace with your Wi-Fi password
+
+// #include <Fonts/FreeSansBold12pt7b.h>  // Medium size for labels
+// #include <Fonts/FreeSansBold24pt7b.h>  // For the glucose difference
+// #include <Fonts/FreeSansBold42pt7b.h>  // Largest available for main reading
 
 // Define ESP32 Pins for ILI9341
-#define TFT_CS 5  // Chip Select
-#define TFT_DC 2  // Data/Command
-#define TFT_RST 4 // Reset
+// #define TFT_CS 5  // Chip Select
+// #define TFT_DC 2  // Data/Command
+// #define TFT_RST 4 // Reset
 
 // Initialize Display
-Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_RST);
+TFT_eSPI tft = TFT_eSPI();
+// Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_RST);
+// Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
+
 
 const char *dexcomAuthenticateURL = "https://share2.dexcom.com/ShareWebServices/Services/General/AuthenticatePublisherAccount";
 const char *dexcomLoginURL = "https://share2.dexcom.com/ShareWebServices/Services/General/LoginPublisherAccountById";
 const char *dexcomDataURL = "https://share2.dexcom.com/ShareWebServices/Services/Publisher/ReadPublisherLatestGlucoseValues";
-
-const char *dexcomUsername = "xxxx";
-const char *dexcomPassword = "xxxx";
 
 const char *applicationId = "d8665ade-9673-4e27-9ff6-92db4ce13d13"; // This is a constant for the Dexcom API
 
@@ -36,6 +40,8 @@ float glucose_diff = 0;
 float glucose_mmol = 0;
 String trend = "Stable";
 String timestamp = "N/A";
+
+String lastRawTime = "N/A";
 
 // Trend direction mapping
 const char *DEXCOM_TREND_DIRECTIONS[] = {
@@ -65,9 +71,12 @@ const char *DEXCOM_TREND_ARROWS[] = {
     "-"         // 9 - RateOutOfRange
 };
 
+void fetchGlucoseData(bool notifyOld = false);
+
 void setup()
 {
     Serial.begin(115200);
+
 
     WiFi.begin(ssid, password);
     while (WiFi.status() != WL_CONNECTED)
@@ -78,11 +87,11 @@ void setup()
     Serial.println("Connected to WiFi");
 
     // Initialize Display
-    SPI.begin(23, 19, 18, 5);
-    tft.begin();
+    // SPI.begin(23, 19, 18, 5);
+    tft.init();
     tft.setRotation(3);
-    tft.fillScreen(ILI9341_BLACK);
-    tft.setTextColor(ILI9341_WHITE);
+    tft.fillScreen(TFT_BLACK);
+    tft.setTextColor(TFT_WHITE);
     tft.setTextSize(2);
     tft.setCursor(30, 30);
     tft.print("Glucose Monitor!");
@@ -118,7 +127,7 @@ void loop()
 
     if (currentMillis - lastFetchTime >= 300000)
     { // Fetch glucose data every 5 minutes
-        fetchGlucoseData();
+        fetchGlucoseData(true);
         lastFetchTime = currentMillis;
     }
 }
@@ -185,7 +194,7 @@ bool loginToDexcom()
     return false;
 }
 
-void fetchGlucoseData()
+void fetchGlucoseData(bool notifyOld)
 {
     if (WiFi.status() == WL_CONNECTED && sessionId != "")
     {
@@ -236,6 +245,10 @@ void fetchGlucoseData()
                 // Extract & format timestamp
                 String rawTime = doc[0]["DT"]; // Example: "Date(1741497044189-0500)"
                 timestamp = formatTimestamp(rawTime);
+
+                if (notifyOld && rawTime == lastRawTime) {
+                    timestamp += " (OLD)";
+                }
 
                 // Calculate difference
                 glucose_diff = current_glucose_mgdl - previous_glucose_mgdl;
@@ -295,51 +308,104 @@ time_t extractUnixTime(String rawTime)
     return 0;
 }
 
-// Function to format the timestamp
 String formatTimestamp(String rawTime)
 {
-    char result[6]; // Buffer for "HH:MM" plus null terminator
-
+    char result[10]; // Increased buffer size for "HH:MM AM/PM" plus null terminator
+    
     if (rawTime.startsWith("Date("))
     {
         // Find the positions of important parts
         int startPos = 5; // After "Date("
         int dashPos = rawTime.indexOf('-', startPos);
         int endPos = rawTime.indexOf(')', dashPos);
-
+        
         if (dashPos > startPos && endPos > dashPos)
         {
             // Extract timestamp (milliseconds since epoch)
             String timestampStr = rawTime.substring(startPos, dashPos);
             uint64_t timestamp = strtoull(timestampStr.c_str(), NULL, 10);
-
+            
             // Extract timezone offset
             String tzOffsetStr = rawTime.substring(dashPos + 1, endPos);
             int tzOffset = tzOffsetStr.toInt();
-
+            
             // Convert timezone from HHMM format to hours
             int tzHours = tzOffset / 100;
             int tzMinutes = tzOffset % 100;
-
+            
             // Convert milliseconds to seconds
             time_t seconds = timestamp / 1000;
-
+            
             // Apply timezone offset
             seconds -= (tzHours * 3600 + tzMinutes * 60);
-
+            
             // Convert to tm structure
             struct tm timeInfo;
             gmtime_r(&seconds, &timeInfo);
-
-            // Format as HH:MM
-            sprintf(result, "%02d:%02d", timeInfo.tm_hour, timeInfo.tm_min);
-
+            
+            // Get hour and determine AM/PM
+            int hour = timeInfo.tm_hour;
+            const char* ampm = hour >= 12 ? "PM" : "AM";
+            
+            // Convert to 12-hour format
+            hour = hour % 12;
+            if (hour == 0) hour = 12; // Handle midnight (0) as 12
+            
+            // Format as "H:MM AM/PM"
+            sprintf(result, "%d:%02d %s", hour, timeInfo.tm_min, ampm);
+            
             return String(result);
         }
     }
-
+    
     return "N/A";
 }
+
+// Function to format the timestamp
+// String formatTimestamp(String rawTime)
+// {
+//     char result[6]; // Buffer for "HH:MM" plus null terminator
+
+//     if (rawTime.startsWith("Date("))
+//     {
+//         // Find the positions of important parts
+//         int startPos = 5; // After "Date("
+//         int dashPos = rawTime.indexOf('-', startPos);
+//         int endPos = rawTime.indexOf(')', dashPos);
+
+//         if (dashPos > startPos && endPos > dashPos)
+//         {
+//             // Extract timestamp (milliseconds since epoch)
+//             String timestampStr = rawTime.substring(startPos, dashPos);
+//             uint64_t timestamp = strtoull(timestampStr.c_str(), NULL, 10);
+
+//             // Extract timezone offset
+//             String tzOffsetStr = rawTime.substring(dashPos + 1, endPos);
+//             int tzOffset = tzOffsetStr.toInt();
+
+//             // Convert timezone from HHMM format to hours
+//             int tzHours = tzOffset / 100;
+//             int tzMinutes = tzOffset % 100;
+
+//             // Convert milliseconds to seconds
+//             time_t seconds = timestamp / 1000;
+
+//             // Apply timezone offset
+//             seconds -= (tzHours * 3600 + tzMinutes * 60);
+
+//             // Convert to tm structure
+//             struct tm timeInfo;
+//             gmtime_r(&seconds, &timeInfo);
+
+//             // Format as HH:MM
+//             sprintf(result, "%02d:%02d", timeInfo.tm_hour, timeInfo.tm_min);
+
+//             return String(result);
+//         }
+//     }
+
+//     return "N/A";
+// }
 
 // Draw a 45-degree up-right arrow
 void drawDiagonalUpArrow(int x, int y, int size, uint16_t color)
@@ -363,49 +429,93 @@ void drawDiagonalDownArrow(int x, int y, int size, uint16_t color)
 
 void updateDisplay()
 {
-    tft.fillScreen(ILI9341_BLACK);
+    tft.fillScreen(TFT_BLACK);
 
     // Title
-    tft.setTextColor(ILI9341_WHITE);
-    tft.setTextSize(2);
-    tft.setCursor(20, 10);
-    tft.print("Glucose Monitor");
+    // tft.setTextColor(TFT_WHITE);
+    // tft.setTextSize(2);
+    // tft.setCursor(20, 10);
+    // tft.print("Glucose Monitor");
 
-    int colorBasedOnGlucose = ILI9341_GREEN;
+    int colorBasedOnGlucose = TFT_GREEN;
 
     if (current_glucose_mgdl > 180)
     {
-        colorBasedOnGlucose = ILI9341_RED;
+        colorBasedOnGlucose = TFT_RED;
     }
     else if (current_glucose_mgdl < 70)
     {
-        colorBasedOnGlucose = ILI9341_BLUE;
+        colorBasedOnGlucose = TFT_BLUE;
     }
     else
     {
-        colorBasedOnGlucose = ILI9341_GREEN;
+        colorBasedOnGlucose = TFT_GREEN;
     }
 
     // Glucose mg/dL
-    tft.setTextColor(colorBasedOnGlucose);
-    tft.setTextSize(4);
-    tft.setCursor(40, 50);
-    tft.printf("%.0f", current_glucose_mgdl);
-    tft.setTextSize(2);
-    tft.setCursor(160, 60);
-    tft.print("mg/dL");
+    // tft.setTextColor(colorBasedOnGlucose);
+    // tft.setTextSize(24);
+    // tft.setCursor(40, 70);
+    // tft.printf("%.0f", current_glucose_mgdl);
+
+
+ // Set text datum to middle center
+    tft.setTextDatum(MC_DATUM);
+    
+    // The main glucose reading - use the largest font
+    tft.setFreeFont(&FreeSansBold24pt7b); // Use the largest font
+    tft.setTextColor(colorBasedOnGlucose, TFT_BLACK);
+
+    // Create a sprite
+    // TFT_eSprite spr = TFT_eSprite(&tft);
+    // spr.createSprite(120, 60); // Create appropriate size
+    // spr.setFreeFont(&FreeSansBold24pt7b);
+    // spr.setTextColor(colorBasedOnGlucose);
+    // spr.drawString("123", 0, 0); // Draw text in sprite
+    // // Now push to screen with 2x scaling
+    // spr.pushSprite(50, 50, 2); // Last parameter is scale factor
+    // spr.deleteSprite(); 
+
+
+    
+    // Position at center of screen (adjust Y position to make room for other elements)
+    int centerX = tft.width() / 2;
+    int centerY = tft.height() / 2 - 20; // Slightly below center
+    
+    // Draw the glucose value at the calculated position
+    tft.drawNumber(round(current_glucose_mgdl), centerX, centerY);
+
+    tft.setTextFont(1); 
+
+      // Main Glucose Value - using the largest practical size
+    // tft.setTextSize(8); // Try this large size
+    
+    // // Calculate position to center the text
+    // // For a 3-digit number with size 8
+    // int textWidth = 8 * 6 * 3; // Approximate width (size * char_width * num_chars)
+    // int xPos = (tft.width() - textWidth) / 2;
+    
+    // tft.setCursor(xPos, 80);
+    // tft.printf("%.0f", current_glucose_mgdl);
+
+
+
+
+    // tft.setTextSize(2);
+    // tft.setCursor(160, 60);
+    // tft.print("mg/dL");
 
     // Glucose mmol/L
-    tft.setTextSize(3);
-    tft.setCursor(40, 100);
-    tft.printf("%.1f", glucose_mmol);
-    tft.setTextSize(2);
-    tft.setCursor(160, 110);
-    tft.print("mmol/L");
+    // tft.setTextSize(3);
+    // tft.setCursor(40, 100);
+    // tft.printf("%.1f", glucose_mmol);
+    // tft.setTextSize(2);
+    // tft.setCursor(160, 110);
+    // tft.print("mmol/L");
 
     // Glucose Change Indicator
-    tft.setTextSize(2);
-    tft.setCursor(115, 57);
+    tft.setTextSize(4);
+    tft.setCursor(120, 20);
     if (glucose_diff > 0)
     {
         tft.printf("+%.0f", glucose_diff);
@@ -416,7 +526,7 @@ void updateDisplay()
     }
     else
     {
-        tft.setTextColor(ILI9341_WHITE);
+        tft.setTextColor(TFT_WHITE);
         tft.print("+0");
     }
 
@@ -468,7 +578,13 @@ void updateDisplay()
     tft.print(trend);
 
     // Timestamp
-    tft.setTextColor(ILI9341_WHITE);
+
+    if (timestamp.endsWith("(OLD)")){
+        tft.setTextColor(TFT_RED);
+    } else {
+        tft.setTextColor(TFT_WHITE);
+    }
+
     tft.setTextSize(2);
     tft.setCursor(40, 210);
     tft.print("Updated: ");
@@ -477,8 +593,8 @@ void updateDisplay()
 
 void displayWiFiStatus(bool status)
 {
-    tft.fillScreen(ILI9341_BLACK);
-    tft.setTextColor(ILI9341_WHITE);
+    tft.fillScreen(TFT_BLACK);
+    tft.setTextColor(TFT_WHITE);
     tft.setTextSize(2);
     tft.setCursor(40, 60);
 
@@ -488,7 +604,7 @@ void displayWiFiStatus(bool status)
     }
     else
     {
-        tft.setTextColor(ILI9341_RED);
+        tft.setTextColor(TFT_RED);
         tft.print("WiFi Down...");
         tft.setCursor(40, 90);
         tft.print("Reconnecting...");
