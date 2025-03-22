@@ -559,7 +559,7 @@ void updateDisplay()
     int centerX = tft.width() / 2;
     int centerY = tft.height() / 2 - 40; // Slightly below center
 
-    if (current_glucose_mgdl >= 100)
+    if (current_glucose_mgdl >= 100 && current_glucose_mgdl < 200)
     {
       centerX -= 30;
     }
