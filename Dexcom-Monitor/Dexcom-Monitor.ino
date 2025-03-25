@@ -212,11 +212,20 @@ void loop()
                 lastSyncTime = currentMillis;
                 logPrint("Refresh synced");
               }          
-          } else if (refreshSynced)
+          } else 
           {
+              if (refreshSynced)
+              {
                 refreshSynced = false;
                 fetchDelay = 15000;
-                logPrint("Refresh desynced");          
+                logPrint("Refresh desynced");  
+
+                if (!timestamp.endsWith("(OLD)"))
+                {
+                  timestamp += " (OLD)";
+                }
+                updateDisplay();
+              }                     
           }
 
           lastFetchTime = currentMillis;
