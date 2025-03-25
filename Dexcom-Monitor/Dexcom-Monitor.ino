@@ -23,6 +23,9 @@
 
 #define BACKLIGHT_PIN 21
 
+#define SCREEN_WIDTH 320
+#define SCREEN_HEIGHT 240
+
 // Initialize Display
 TFT_eSPI tft = TFT_eSPI();
 // Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_RST);
@@ -62,7 +65,7 @@ bool loggedIn = false;
 bool refreshSynced = false;
 int fetchDelay = 15000;
 int brightness = 128;
-
+int rotation = 1;
 
 // Trend direction mapping
 const char *DEXCOM_TREND_DIRECTIONS[] = {
@@ -114,7 +117,7 @@ void setup()
     // SPI.begin(23, 19, 18, 5);
     tft.init();
     setBrightNess();
-    tft.setRotation(3);
+    tft.setRotation(rotation);
     tft.fillScreen(TFT_BLACK);
     tft.setTextColor(TFT_WHITE);
     tft.setTextSize(2);
@@ -222,17 +225,41 @@ void loop()
 
     
 
-    if (currentMillis - lastTouchTime > 300 && touchscreen.tirqTouched() && touchscreen.touched()) 
-    {
-        lastTouchTime = currentMillis;
-        brightness -= 32;
-        if (brightness <= 0) 
-        {
-            brightness = 255;
-        }
+  if (currentMillis - lastTouchTime > 300 && touchscreen.tirqTouched() && touchscreen.touched()) 
+  {
+      lastTouchTime = currentMillis;
 
-        setBrightNess();
-    }
+      // Retrieve the touch coordinates (adjust these calls to match your library)
+
+      TS_Point p = touchscreen.getPoint();
+      int touchX = map(p.x, 200, 3700, 1, SCREEN_WIDTH);
+      int touchY = map(p.y, 240, 3800, 1, SCREEN_HEIGHT);
+      int touchZ = p.z;
+      
+      // Check if touch is within the top-left 75x75 area
+      if (touchX < 75 && touchY < 75) 
+      {
+          if (rotation == 3)
+          {
+              rotation = 1;  
+          } else if (rotation == 1)
+          {
+              rotation = 3;
+          }
+
+          tft.setRotation(rotation);
+          updateDisplay();
+
+      } else {
+          brightness -= 32;
+          if (brightness <= 0) {
+              brightness = 255;
+          }
+          setBrightNess();
+      }
+  }
+
+
 }
 
 bool authenticateToDexcom()
