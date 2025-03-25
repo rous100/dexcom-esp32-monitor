@@ -58,6 +58,7 @@ String timestamp = "N/A";
 
 String lastRawTime = "N/A";
 
+bool loggedIn = false;
 bool refreshSynced = false;
 int fetchDelay = 15000;
 int brightness = 128;
@@ -97,15 +98,13 @@ void setup()
 {
     Serial.begin(115200);
 
-
-
     WiFi.begin(ssid, password);
     while (WiFi.status() != WL_CONNECTED)
     {
         delay(1000);
-        Serial.println("Connecting to WiFi...");
+        logPrint("Connecting to WiFi...");
     }
-    Serial.println("Connected to WiFi");
+    logPrint("Connected to WiFi");
 
 
     touchscreenSPI.begin(XPT2046_CLK, XPT2046_MISO, XPT2046_MOSI, XPT2046_CS);
@@ -127,17 +126,40 @@ void setup()
 
     delay(2000);
 
-    if (authenticateToDexcom())
-    {
-        Serial.println(accountId);
-        if (loginToDexcom())
-        {
-            Serial.println(sessionId);
-            fetchGlucoseData();
-        }
-    }
-    fetchGlucoseData();
+    // loggedIn = authenticateToDexcom();
+
+    // if (authenticateToDexcom())
+    // {
+    //     logPrint(accountId);
+    //     if (loginToDexcom())
+    //     {
+    //         logPrint(sessionId);
+    //         fetchGlucoseData();
+    //     }
+    // }
+    // fetchGlucoseData();
 }
+
+void logPrint(String message) {
+    unsigned long currentMillis = millis();
+
+    // Calculate hours, minutes, seconds, and milliseconds
+    unsigned long hours = currentMillis / 3600000;
+    unsigned long minutes = (currentMillis % 3600000) / 60000;
+    unsigned long seconds = (currentMillis % 60000) / 1000;
+    unsigned long ms = currentMillis % 1000;
+    
+    // Format the timestamp as HH:MM:SS.mmm
+    char timestamp[16];
+    sprintf(timestamp, "%02lu:%02lu:%02lu.%03lu", hours, minutes, seconds, ms);
+    
+    // Print the timestamp and the message
+    Serial.print("[");
+    Serial.print(timestamp);
+    Serial.print("] ");
+    Serial.println(message);
+}
+
 
 void setBrightNess()
 {
@@ -149,6 +171,7 @@ void loop()
 {
     static unsigned long lastFetchTime = 0;
     static unsigned long lastWiFiCheckTime = 0;
+    static unsigned long lastLoginCheckTime = 0;
     static unsigned long lastSyncTime = 0;
     static unsigned long lastTouchTime = 0;
     unsigned long currentMillis = millis();
@@ -159,31 +182,45 @@ void loop()
         lastWiFiCheckTime = currentMillis;
     }
 
+    if (!loggedIn)
+    {
+        if (lastLoginCheckTime == 0 || currentMillis - lastLoginCheckTime >= 30000)
+        {
+            lastLoginCheckTime = currentMillis;
+            loggedIn = authenticateToDexcom();
+        }
+    }
+
     if (refreshSynced && currentMillis - lastSyncTime >= 3600000) // redo sync every hour
     {
         refreshSynced = false;
     }
 
-    if (currentMillis - lastFetchTime >= fetchDelay)
+    if (loggedIn)
     {
-        if (fetchGlucoseData(refreshSynced))
-        {
-            if (!refreshSynced)
-            {
-              refreshSynced = true;
-              fetchDelay = 300000;
-              lastSyncTime = currentMillis;
-              Serial.println("Refresh synced");
-            }          
-        } else if (refreshSynced)
-        {
-              refreshSynced = false;
-              fetchDelay = 15000;
-              Serial.println("Refresh desynced");          
-        }
+      if (lastFetchTime == 0 || currentMillis - lastFetchTime >= fetchDelay)
+      {
+          if (fetchGlucoseData(refreshSynced))
+          {
+              if (!refreshSynced)
+              {
+                refreshSynced = true;
+                fetchDelay = 300000;
+                lastSyncTime = currentMillis;
+                logPrint("Refresh synced");
+              }          
+          } else if (refreshSynced)
+          {
+                refreshSynced = false;
+                fetchDelay = 15000;
+                logPrint("Refresh desynced");          
+          }
 
-        lastFetchTime = currentMillis;
+          lastFetchTime = currentMillis;
+      }
     }
+
+    
 
     if (currentMillis - lastTouchTime > 300 && touchscreen.tirqTouched() && touchscreen.touched()) 
     {
@@ -215,13 +252,13 @@ bool authenticateToDexcom()
         {
             accountId = http.getString();
             accountId.replace("\"", ""); // Remove quotes
-            Serial.println("Dexcom Session ID: " + accountId);
+            logPrint("Dexcom Authenticate Session ID: " + accountId);
             http.end();
-            return true;
+            return loginToDexcom();
         }
         else
         {
-            Serial.printf("Login failed, HTTP code: %d\n", httpCode);
+            Serial.printf("Authenticate failed, HTTP code: %d\n", httpCode);
             http.end();
             return false;
         }
@@ -246,7 +283,7 @@ bool loginToDexcom()
         {
             sessionId = http.getString();
             sessionId.replace("\"", ""); // Remove quotes
-            Serial.println("Dexcom Session ID: " + sessionId);
+            logPrint("Dexcom Login Session ID: " + sessionId);
             http.end();
             return true;
         }
@@ -278,22 +315,22 @@ bool fetchGlucoseData(bool notifyOld)
         if (httpCode == HTTP_CODE_OK)
         {
             String payload = http.getString();
-            Serial.println("Response: " + payload);
+            logPrint("Response: " + payload);
 
             // Check for "SessionNotValid" in response
             if (payload.indexOf("SessionNotValid") != -1)
             {
-                Serial.println("Session expired! Re-authenticating...");
+                logPrint("Session expired! Re-authenticating...");
 
                 // Re-login
                 if (loginToDexcom())
                 {
-                    Serial.println("Re-login successful. Retrying glucose data fetch...");
+                    logPrint("Re-login successful. Retrying glucose data fetch...");
                     fetchGlucoseData(); // Retry after successful login
                 }
                 else
                 {
-                    Serial.println("Re-login failed!");
+                    logPrint("Re-login failed!");
                 }
                 return ret; // Stop execution here
             }
@@ -327,14 +364,14 @@ bool fetchGlucoseData(bool notifyOld)
                     ret = true;
                 }
 
-
-                
-
                 // Calculate difference
                 glucose_diff = current_glucose_mgdl - previous_glucose_mgdl;
 
-                Serial.printf("Glucose: %.0f mg/dL | Trend: %s | Change: %+0.1f | Time: %s\n",
-                              current_glucose_mgdl, trend.c_str(), glucose_diff, timestamp.c_str());
+                char logBuffer[128]; // Make sure this buffer is large enough for your message
+                snprintf(logBuffer, sizeof(logBuffer), "Glucose: %.0f mg/dL | Trend: %s | Change: %+0.1f | Time: %s",
+                      current_glucose_mgdl, trend.c_str(), glucose_diff, timestamp.c_str());
+                logPrint(String(logBuffer));
+
 
                 if (refreshSynced || lastRawTime != rawTime)
                 {
@@ -346,18 +383,20 @@ bool fetchGlucoseData(bool notifyOld)
             else
             {
                 Serial.print("JSON Deserialization Error: ");
-                Serial.println(error.c_str());
+                logPrint(error.c_str());
             }
         }
         else
         {
             Serial.printf("Failed to get glucose data, HTTP code: %d\n", httpCode);
+            loggedIn = false;
+            refreshSynced = false;
         }
         http.end();
     }
     else
     {
-        Serial.println("WiFi not connected or invalid session ID.");
+        logPrint("WiFi not connected or invalid session ID.");
     }
 
     return ret;
@@ -370,9 +409,9 @@ bool checkDiff(DynamicJsonDocument &doc)
 
     time_t time0 = extractUnixTime(doc[0]["DT"]);
     time_t time1 = extractUnixTime(doc[1]["DT"]);
-    Serial.println(time0);
-    Serial.println(time1);
-    Serial.println(abs(time0 - time1) < 300);
+    // logPrint(time0);
+    // logPrint(time1);
+    // logPrint(abs(time0 - time1) < 300);
 
     return abs(time0 - time1) < 300;
 }
@@ -686,7 +725,7 @@ void checkWiFiConnection()
 {
     if (WiFi.status() != WL_CONNECTED)
     {
-        Serial.println("WiFi connection is down, reconnecting...");
+        logPrint("WiFi connection is down, reconnecting...");
         displayWiFiStatus(false); // Show on TFT screen
 
         WiFi.disconnect();
@@ -703,14 +742,14 @@ void checkWiFiConnection()
 
         if (WiFi.status() == WL_CONNECTED)
         {
-            Serial.println("\nReconnected to WiFi");
+            logPrint("\nReconnected to WiFi");
             displayWiFiStatus(true); // Show success on TFT
             delay(2000);             // Keep message visible before updating
             updateDisplay();         // Refresh glucose data display
         }
         else
         {
-            Serial.println("\nWiFi reconnection failed");
+            logPrint("\nWiFi reconnection failed");
         }
     }
 }
