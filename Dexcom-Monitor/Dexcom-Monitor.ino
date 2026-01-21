@@ -74,6 +74,8 @@ int fetchDelay = 15000;
 int brightness = 128;
 int rotation = 1;
 
+unsigned long lastNoiseTime = 0;
+
 // Trend direction mapping
 const char *DEXCOM_TREND_DIRECTIONS[] = {
     "None",          // 0 - Unconfirmed
@@ -356,6 +358,8 @@ void playSuccessTone() {
 
 bool fetchGlucoseData(bool notifyOld)
 {
+    unsigned long currentMillis = millis();
+
     bool ret = false;
 
     if (WiFi.status() == WL_CONNECTED && sessionId != "")
@@ -435,20 +439,34 @@ bool fetchGlucoseData(bool notifyOld)
                   updateDisplay(); // Update LCD
                 }
 
-                if (current_glucose_mgdl < GLUCOSE_URGENT_LOW)
+                if (lastNoiseTime == 0 || currentMillis - lastNoiseTime >= 240000) 
                 {
-                    playAlertUrgentLow();
-                } else if (glucose_diff*2 + current_glucose_mgdl < GLUCOSE_LOW)
-                {
-                    playAlertLow();
-                } else if (current_glucose_mgdl < GLUCOSE_HIGH && glucose_diff*2 + current_glucose_mgdl > GLUCOSE_HIGH)
-                {
-                    playAlertHigh();
+                    bool noisePlayed = true;
+
+                    if (current_glucose_mgdl < GLUCOSE_URGENT_LOW)
+                    {
+                        playAlertUrgentLow();
+                    } else if (glucose_diff*2 + current_glucose_mgdl < GLUCOSE_LOW)
+                    {
+                        playAlertLow();
+                    } else if (current_glucose_mgdl < GLUCOSE_HIGH && glucose_diff*2 + current_glucose_mgdl > GLUCOSE_HIGH)
+                    {
+                        playAlertHigh();
+                    } else if (timestamp.endsWith("(OLD)"))
+                    {
+                        playAlertNoData();
+                    } else 
+                    {
+                        noisePlayed = false;
+                    }
+
+                    if (noisePlayed)
+                    {
+                        lastNoiseTime = currentMillis;
+                    }
                 }
-                else if (timestamp.endsWith("(OLD)"))
-                {
-                    playAlertNoData();
-                }
+
+            
 
 
                 lastRawTime = rawTime;
