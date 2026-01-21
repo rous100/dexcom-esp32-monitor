@@ -1,3 +1,4 @@
+#include <Arduino.h>
 #include <SPI.h>
 #include <TFT_eSPI.h>
 #include <WiFi.h>
@@ -22,6 +23,8 @@
 // #define TFT_RST 4 // Reset
 
 #define BACKLIGHT_PIN 21
+#define SPEAKER_PIN 26
+#define CHANNEL 0
 
 #define SCREEN_WIDTH 320
 #define SCREEN_HEIGHT 240
@@ -37,6 +40,10 @@ TFT_eSPI tft = TFT_eSPI();
 #define XPT2046_MISO 39  // T_OUT
 #define XPT2046_CLK 25   // T_CLK
 #define XPT2046_CS 33    // T_CS
+
+#define GLUCOSE_HIGH 180
+#define GLUCOSE_LOW 80
+#define GLUCOSE_URGENT_LOW 70
 
 SPIClass touchscreenSPI = SPIClass(VSPI);
 XPT2046_Touchscreen touchscreen(XPT2046_CS, XPT2046_IRQ);
@@ -99,6 +106,8 @@ bool fetchGlucoseData(bool notifyOld = false);
 
 void setup()
 {
+    pinMode(SPEAKER_PIN, OUTPUT);
+
     Serial.begin(115200);
 
     WiFi.begin(ssid, password);
@@ -321,6 +330,9 @@ bool loginToDexcom()
             sessionId.replace("\"", ""); // Remove quotes
             logPrint("Dexcom Login Session ID: " + sessionId);
             http.end();
+            // playSuccessTone();
+            // playCriticalAlertLow();
+            // playAlertNoData();
             return true;
         }
         else
@@ -331,6 +343,15 @@ bool loginToDexcom()
         }
     }
     return false;
+}
+
+
+void playSuccessTone() {
+    tone(SPEAKER_PIN, 880, 100);  // A5
+    delay(100);
+    tone(SPEAKER_PIN, 1047, 100); // C6
+    delay(100);
+    noTone(SPEAKER_PIN);
 }
 
 bool fetchGlucoseData(bool notifyOld)
@@ -413,6 +434,22 @@ bool fetchGlucoseData(bool notifyOld)
                 {
                   updateDisplay(); // Update LCD
                 }
+
+                if (current_glucose_mgdl < GLUCOSE_URGENT_LOW)
+                {
+                    playAlertUrgentLow();
+                } else if (glucose_diff*2 + current_glucose_mgdl < GLUCOSE_LOW)
+                {
+                    playAlertLow();
+                } else if (current_glucose_mgdl < GLUCOSE_HIGH && glucose_diff*2 + current_glucose_mgdl > GLUCOSE_HIGH)
+                {
+                    playAlertHigh();
+                }
+                else if (timestamp.endsWith("(OLD)"))
+                {
+                    playAlertNoData();
+                }
+
 
                 lastRawTime = rawTime;
             }
@@ -601,11 +638,11 @@ void updateDisplay()
 
     int colorBasedOnGlucose = TFT_GREEN;
 
-    if (current_glucose_mgdl > 180)
+    if (current_glucose_mgdl > GLUCOSE_HIGH)
     {
         colorBasedOnGlucose = TFT_YELLOW;
     }
-    else if (current_glucose_mgdl < 80)
+    else if (current_glucose_mgdl < GLUCOSE_LOW)
     {
         colorBasedOnGlucose = TFT_RED;
     }
@@ -788,4 +825,37 @@ void checkWiFiConnection()
             logPrint("\nWiFi reconnection failed");
         }
     }
+}
+
+void playAlertNoData() {
+  tone(SPEAKER_PIN, 100, 300); delay(150);
+  tone(SPEAKER_PIN, 100, 300); delay(500);
+  noTone(SPEAKER_PIN);
+}
+
+void playAlertLow() {
+  tone(SPEAKER_PIN, 500, 300); delay(300);
+  tone(SPEAKER_PIN, 300, 300); delay(300);
+  tone(SPEAKER_PIN, 100, 500); delay(500);
+  noTone(SPEAKER_PIN);
+}
+
+void playAlertHigh() {
+  tone(SPEAKER_PIN, 100, 300); delay(300);
+  tone(SPEAKER_PIN, 300, 300); delay(300);
+  tone(SPEAKER_PIN, 500, 500); delay(500);
+  noTone(SPEAKER_PIN);
+}
+
+void playAlertUrgentLow() {
+  tone(SPEAKER_PIN, 300, 300); delay(500);
+  tone(SPEAKER_PIN, 100, 300); delay(200);
+  tone(SPEAKER_PIN, 100, 300); delay(800);
+  tone(SPEAKER_PIN, 300, 300); delay(500);
+  tone(SPEAKER_PIN, 100, 300); delay(200);
+  tone(SPEAKER_PIN, 100, 300); delay(800);
+  tone(SPEAKER_PIN, 300, 300); delay(500);
+  tone(SPEAKER_PIN, 100, 300); delay(200);
+  tone(SPEAKER_PIN, 100, 300); delay(800);
+  noTone(SPEAKER_PIN);
 }
