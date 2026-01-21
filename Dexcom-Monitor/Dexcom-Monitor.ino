@@ -446,7 +446,7 @@ bool fetchGlucoseData(bool notifyOld)
                     if (current_glucose_mgdl < GLUCOSE_URGENT_LOW)
                     {
                         playAlertUrgentLow();
-                    } else if (glucose_diff*2 + current_glucose_mgdl < GLUCOSE_LOW)
+                    } else if (glucose_diff*3 + current_glucose_mgdl < GLUCOSE_LOW)
                     {
                         playAlertLow();
                     } else if (current_glucose_mgdl < GLUCOSE_HIGH && glucose_diff*2 + current_glucose_mgdl > GLUCOSE_HIGH)
