@@ -504,7 +504,7 @@ bool checkDiff(DynamicJsonDocument &doc)
     // logPrint(time1);
     // logPrint(abs(time0 - time1) < 300);
 
-    return abs(time0 - time1) < 300;
+    return abs(time0 - time1) < 290;
 }
 
 time_t extractUnixTime(String rawTime)
